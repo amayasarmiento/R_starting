@@ -1,0 +1,30 @@
+#this should be a new version file of the code before but neater and tidy er 
+#use default theme minimal and for points size .1 and alpha 0.2 
+
+# Load libraries ----------------------------------------------------------
+
+# Upload data-----------------------------------------------------------------
+
+# Make the basic dfs to start the analysis -------------------------------------------
+-make a long version of nohela where the Reps are all in one column for Nskip, Ninc, Nother, psi_canonical, psi_all, etc 
+-make a long version of the barcode read counts that maintains the rest of the info in the df 
+-take logs of the read or variant counts and add those columns to the dfs 
+
+
+# Plot the interreplicate analysis ---------------------------------------------------------
+- venn diagram of barcode overlap 
+- Eulerr diagram of overlap 
+- boxplot of barcode counts 
+- Density plot of the barcode count 
+- make the six simple scattterplots correlating the replicates and join them; also use ggpairs to make a figure
+
+
+# Look at the data ------------------------------------------------------------------
+-make summaries of all the descriptive stats for each column in the long dfs printout
+, and then make a few descriptive plots like boxplots by gene 
+-plot the barcodes and variant counts per gene 
+then plot them log transformed boxplot
+- make the ninc plot; then make it plot the log of the ninc
+- make a violin plot of the psi distribution for each gene 
+-make a histogram of the barcode number per variant and another of the read number per variant 
+- Use those numbers vs the oligo pool order file to see how many of the variants have been covered /which proportion are missing from experiment, and plot by gene the missingness
