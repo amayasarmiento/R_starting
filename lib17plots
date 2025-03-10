@@ -365,10 +365,15 @@ print(psi_variant_plot)
 #   ggtitle("PSI per Barcode (R1 vs R2)") +
 #   theme_minimal()
 
+r = cor(psi_all_hek_R2, psi_all_hek_R3)
+
 # Scatterplot for barcode-level PSI (R2 vs R3)
 plot_barcode_r2_r3 <- ggplot(psi_per_barcode, aes(x = psi_all_hek_R2, y = psi_all_hek_R3)) +
-  geom_point(alpha = 0.2, color = "blue") +
+  geom_point(size= 0.1,alpha = 0.2, color = "blue") +
   geom_smooth(method = "lm", color = "red") +
+  geom_text(x = 20, y = 285,
+            label = r,
+            color = 'black')+
   ggtitle("PSI per Barcode (R2 vs R3)") +
   theme_minimal()
 
@@ -379,6 +384,95 @@ plot_barcode_r2_r3 <- ggplot(psi_per_barcode, aes(x = psi_all_hek_R2, y = psi_al
 #   ggtitle("PSI per Barcode (1 vs R3)") +
 #   theme_minimal()
 
+
+# Compute Pearson correlation coefficient
+r <- cor(psi_per_barcode$psi_all_hek_R2, psi_per_barcode$psi_all_hek_R3, use = "pairwise.complete.obs")
+
+# Compute R²
+r_squared <- r^2
+
+# Scatterplot for barcode-level PSI (R2 vs R3)
+plot_barcode_r2_r3 <- ggplot(psi_per_barcode, aes(x = psi_all_hek_R2, y = psi_all_hek_R3)) +
+  geom_point(size = 0.1, alpha = 0.2, color = "blue") +
+  geom_smooth(method = "psi_all_hek_R3 ~ psi_all_hek_R2", color = "red") +
+  geom_text(x = 20, y = 285,
+            label = sprintf("R² = %.3f", r_squared),  # Format R² with 3 decimal places
+            color = 'black',
+            size = 500) +  # Adjust text size if needed
+  ggtitle("PSI per Barcode (R2 vs R3)") +
+  theme_minimal()
+
+# Print the plot
+print(plot_barcode_r2_r3)
+
+
+####
+# Scatterplot for barcode-level PSI (R2 vs R3)
+plot_barcode_r2_r3 <- ggplot(psi_per_barcode, aes(x = psi_all_hek_R2, y = psi_all_hek_R3)) +
+  geom_point(size = 0.1, alpha = 0.2, color = "blue") +
+  geom_smooth(formula = x ~ y, color = "red") +
+  geom_text(x = 6, y = 94,
+            label = sprintf("R² = %.3f", r_squared),  # Format R² with 3 decimal places
+            color = 'black',
+            size = 4) +  # Adjust text size if needed
+  ggtitle(" psi per barcode ") +
+  theme_minimal()
+# Print the plot
+print(plot_barcode_r2_r3)
+#####
+library(ggplot2)
+library(dplyr)
+
+# Assuming 'psi_per_barcode' is your data frame
+plot_barcode_r2_r3 <- psi_per_barcode %>%
+  ggplot(aes(x = psi_all_hek_R2, y = psi_all_hek_R3)) +
+  geom_point(size = 0.1, alpha = 0.2, color = "blue") +
+  geom_smooth(formula = y ~ x, method = "lm", color = "red") +  # Linear model for regression line
+  geom_text(x = 6, y = 94,
+            label = sprintf("R² = %.3f", r_squared),  # Format R² with 3 decimal places
+            color = 'black',
+            size = 4) +  # Adjust text size if needed
+  ggtitle("psi per barcode") +
+  theme_minimal()
+
+# Print the plot
+print(plot_barcode_r2_r3)
+library(ggplot2)
+library(dplyr)
+######################this worked #####################
+# Compute the linear model to extract the R² value
+lm_model <- lm(psi_all_hek_R3 ~ psi_all_hek_R2, data = psi_per_barcode)
+r_squared <- summary(lm_model)$r.squared  # Extract R² from the linear model
+
+# Scatterplot for barcode-level PSI (R2 vs R3)
+plot_barcode_r2_r3 <- ggplot(psi_per_barcode, aes(x = psi_all_hek_R2, y = psi_all_hek_R3)) +
+  geom_point(size = 0.1, alpha = 0.2, color = "blue") +
+  geom_smooth(formula = y ~ x, method = "lm", color = "red") +  # Linear model for regression line
+  geom_text(x = 6, y = 94,
+            label = sprintf("R² = %.3f", r_squared),  # Format R² with 3 decimal places
+            color = 'black',
+            size = 4) +  # Adjust text size if needed
+  ggtitle("psi per barcode") +
+  theme_minimal()
+
+# Print the plot
+print(plot_barcode_r2_r3)
+ ## try filtering 
+plot_barcode_r2_r3 <- psi_per_barcode %>%
+  filter() %>% 
+  ggplot(aes(x = psi_all_hek_R2, y = psi_all_hek_R3)) +
+  geom_point(size = 0.1, alpha = 0.2, color = "blue") +
+  geom_smooth(formula = y ~ x, method = "lm", color = "red") +  # Linear model for regression line
+  geom_text(x = 6, y = 94,
+            label = sprintf("R² = %.3f", r_squared),  # Format R² with 3 decimal places
+            color = 'black',
+            size = 4) +  # Adjust text size if needed
+  ggtitle("psi per barcode") +
+  theme_minimal()
+
+# Print the plot
+print(plot_barcode_r2_r3)
+##############
 # --- 2. Collapse PSI per Barcode to Variant Level ---
 psi_per_variant <- read_count_long %>%
   group_by(variant_id) %>%
@@ -649,6 +743,20 @@ p_log <- ggplot(ninc_long, aes(x = gene_name, y = log10(count + 1), fill = condi
 
 print(p_log)
 
+##maybe more robust version 
+
+p_log <- ggplot(ninc_long, aes(x = gene_name, y = log10(count + 1), fill = condition)) +
+  geom_bar(stat = "identity", position = "stack") +
+  facet_wrap(~replicate, scales = "free_x") +  
+  scale_fill_manual(values = c("Ninc" = "green", "Nskip" = "red", "Other" = "gray")) +
+  theme_minimal() +
+  labs(title = "Log-Scaled Ninc vs Nskip vs Other Read Counts",
+       x = "Gene Name",
+       y = "Log10 Read Count",
+       fill = "Condition") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(p_log)
 
 #######
 
