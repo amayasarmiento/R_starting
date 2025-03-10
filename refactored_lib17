@@ -1,0 +1,108 @@
+# Load libraries ----------------------------------------------------------
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggvenn)
+library(eulerr)
+library(GGally)
+
+# Upload data-----------------------------------------------------------------
+nohela <- read.csv("nohela.csv")
+barcode_data <- read.csv("barcode_data.csv")
+oligo_pool <- read.csv("oligo_pool.csv")
+
+# Make the basic dfs to start the analysis -------------------------------------------
+# Convert nohela to long format
+nohela_long <- nohela %>% 
+  pivot_longer(cols = starts_with("N"), names_to = "Replicate", values_to = "Value")
+
+# Convert barcode_data to long format
+barcode_long <- barcode_data %>% 
+  pivot_longer(cols = starts_with("hek"), names_to = "Replicate", values_to = "Count")
+
+# Log transform read/variant counts
+barcode_long <- barcode_long %>% 
+  mutate(log_Count = log1p(Count))
+nohela_long <- nohela_long %>% 
+  mutate(log_Value = log1p(Value))
+
+# Plot the interreplicate analysis ---------------------------------------------------------
+# Venn diagram of barcode overlap
+ggvenn(list(A = barcode_data$Rep1, B = barcode_data$Rep2, C = barcode_data$Rep3))
+
+eulerr_diagram <- euler(c(A = sum(barcode_data$Rep1 > 0),
+                          B = sum(barcode_data$Rep2 > 0),
+                          C = sum(barcode_data$Rep3 > 0),
+                          "A&B" = sum(barcode_data$Rep1 > 0 & barcode_data$Rep2 > 0),
+                          "A&C" = sum(barcode_data$Rep1 > 0 & barcode_data$Rep3 > 0),
+                          "B&C" = sum(barcode_data$Rep2 > 0 & barcode_data$Rep3 > 0),
+                          "A&B&C" = sum(barcode_data$Rep1 > 0 & barcode_data$Rep2 > 0 & barcode_data$Rep3 > 0)))
+plot(eulerr_diagram)
+
+# Boxplot of barcode counts
+ggplot(barcode_long, aes(x = Replicate, y = Count)) + 
+  geom_boxplot() + 
+  theme_minimal()
+
+# Density plot of barcode counts
+ggplot(barcode_long, aes(x = Count, fill = Replicate)) + 
+  geom_density(alpha = 0.2) + 
+  theme_minimal()
+
+# Scatterplots correlating replicates
+scatter_plots <- GGally::ggpairs(barcode_data, aes(alpha = 0.2, size = 0.1))
+print(scatter_plots)
+
+# Look at the data ------------------------------------------------------------------
+# Descriptive statistics
+summary(nohela_long)
+summary(barcode_long)
+
+# Boxplots by gene
+ggplot(nohela_long, aes(x = Gene, y = Value)) + 
+  geom_boxplot() + 
+  theme_minimal()
+
+# Barcodes and variant counts per gene
+ggplot(barcode_long, aes(x = Gene, y = Count)) + 
+  geom_boxplot() + 
+  theme_minimal()
+
+# Log-transformed boxplot
+ggplot(barcode_long, aes(x = Gene, y = log_Count)) + 
+  geom_boxplot() + 
+  theme_minimal()
+
+# Ninc plot
+ggplot(nohela_long, aes(x = Gene, y = Value)) + 
+  geom_point(size = 0.1, alpha = 0.2) + 
+  theme_minimal()
+
+ggplot(nohela_long, aes(x = Gene, y = log_Value)) + 
+  geom_point(size = 0.1, alpha = 0.2) + 
+  theme_minimal()
+
+# Violin plot of psi distribution
+ggplot(nohela_long, aes(x = Gene, y = psi_all)) + 
+  geom_violin() + 
+  theme_minimal()
+
+# Histogram of barcode numbers per variant
+ggplot(barcode_long, aes(x = Count)) + 
+  geom_histogram(bins = 30, fill = "blue", alpha = 0.2) + 
+  theme_minimal()
+
+# Histogram of read numbers per variant
+ggplot(barcode_long, aes(x = log_Count)) + 
+  geom_histogram(bins = 30, fill = "red", alpha = 0.2) + 
+  theme_minimal()
+
+# Missing variants analysis
+covered_variants <- barcode_data %>% 
+  group_by(Gene) %>% 
+  summarise(covered = sum(Count > 0), total = n()) %>% 
+  mutate(missingness = 1 - covered / total)
+
+ggplot(covered_variants, aes(x = Gene, y = missingness)) + 
+  geom_bar(stat = "identity", fill = "gray") + 
+  theme_minimal()
