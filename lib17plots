@@ -549,3 +549,107 @@ plot_psi <- ggplot(psi_long, aes(x = gene, y = PSI, color = replicate)) +
 # Print the plot
 print(plot_psi)
 
+
+
+
+########################
+
+########################### see the n in nskip # Reshape the data to long format for easier plotting
+ninc_long <- read_count_long %>%
+  mutate(intron = str_replace(intron, "i", "")) %>%  # Remove "i" from intron number 
+  pivot_longer(cols = starts_with("Nskip") | starts_with("Ninc") | starts_with("Nother"),
+               names_to = "condition", values_to = "count") %>%
+  mutate(replicate = str_extract(condition, "R[123]"),  # Extract replicate number
+         condition = case_when(
+           str_detect(condition, "Ninc") ~ "Ninc",
+           str_detect(condition, "Nskip") ~ "Nskip",
+           TRUE ~ "Other"
+         ))
+
+# Plot
+p <- ggplot(ninc_long, aes(x = gene_name, y = count, fill = condition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~replicate) +  # Separate plots by replicate
+  scale_fill_manual(values = c("Ninc" = "green", "Nskip" = "red", "Other" = "gray")) +
+  theme_minimal() +
+  labs(title = "Ninc vs Nskip vs Other Read Counts",
+       x = "Gene Name",
+       y = "Read Count",
+       fill = "Condition") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(p)
+########################################
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+# Reshape the data to long format for easier plotting
+ninc_long <- read_count_long %>%
+  mutate(intron = str_replace(intron, "i", "")) %>%  # Remove "i" from intron number 
+  pivot_longer(cols = starts_with("Nskip") | starts_with("Ninc") | starts_with("Nother"),
+               names_to = "condition", values_to = "count") %>%
+  mutate(replicate = str_extract(condition, "R[123]"),  # Extract replicate number
+         condition = case_when(
+           str_detect(condition, "Ninc") ~ "Ninc",
+           str_detect(condition, "Nskip") ~ "Nskip",
+           TRUE ~ "Other"
+         ))
+
+# Log transformation only for 'Nskip' and 'Ninc'
+ninc_long_log <- ninc_long %>%
+  mutate(count = case_when(
+    condition %in% c("Nskip", "Ninc") ~ log10(count + 1),  # Log-transform for Nskip and Ninc
+    TRUE ~ count  # Keep other conditions unchanged
+  ))
+
+# Plot for log-transformed values
+p_log <- ggplot(ninc_long_log, aes(x = gene_name, y = count, fill = condition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~replicate) +  # Separate plots by replicate
+  scale_fill_manual(values = c("Ninc" = "green", "Nskip" = "red", "Other" = "gray")) +
+  theme_minimal() +
+  labs(title = "Log-Scaled Ninc vs Nskip vs Other Read Counts",
+       x = "Gene Name",
+       y = "Log10 Read Count",
+       fill = "Condition") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(p_log)
+
+
+
+
+# a log-scaled one for easier viz
+p_log <- ggplot(ninc_long, aes(x = gene_name, y = log10(count + 1), fill = condition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~replicate) +  
+  scale_fill_manual(values = c("Ninc" = "green", "Nskip" = "red", "Other" = "gray")) +
+  theme_minimal() +
+  labs(title = "Log-Scaled Ninc vs Nskip vs Other Read Counts",
+       x = "Gene Name",
+       y = "Log10 Read Count",
+       fill = "Condition") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(p_log)
+
+p_log <- ggplot(ninc_long, aes(x = gene_name, y = log10(count + 1), fill = condition)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use stack instead of dodge
+  facet_grid(~replicate, scales = "free_x", space = "free_x") +  # Align replicates horizontally
+  scale_fill_manual(values = c("Ninc" = "green", "Nskip" = "red", "Other" = "gray")) +
+  theme_minimal() +
+  labs(title = "Log-Scaled Ninc vs Nskip vs Other Read Counts",
+       x = "Gene Name",
+       y = "Log10 Read Count",
+       fill = "Condition") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(p_log)
+
+
+#######
+
+
