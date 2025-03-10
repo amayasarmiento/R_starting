@@ -1,5 +1,6 @@
 #this should be a new version file of the code before but neater and tidy er 
 #use default theme minimal and for points size .1 and alpha 0.2 
+#eliminate stuff that is used for plots after generating them 
 
 # Load libraries ----------------------------------------------------------
 
