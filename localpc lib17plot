@@ -1,68 +1,65 @@
+### Let me try make a new clean version that can become a report
+#this should be a new version file of the code before but neater and tidy er
+#use default theme minimal and for points size .1 and alpha 0.2
+#eliminate stuff that is used for plots after generating them
 
+# Load libraries---------------------------------------
 
-
-# Load necessary libraries
-
-library(tidyverse)
-library(ggplot2)
-library(stringr)
-library(beeswarm)
-library(here)
-library("ggcorrplot")
-library(skimr)
-library(dplyr)
-library(VennDiagram)
-library(ggvenn)
-library(data.table)  # For fast data reading
-library(readr)       # Alternative for efficient reading
-library(eulerr)
+library(tidyverse)    # Loads ggplot2, dplyr, readr, stringr, etc.
+library(here)         # For managing file paths
+library(GGally)       # If you need pair plots + correlations
+library(cowplot)      # For combining multiple ggplots
+library(ggvenn)       # If you prefer ggplot-style Venn diagrams
+library(data.table)   # If you need extremely fast data handling
 library(ggVennDiagram)
-
-here()
-
+library(eulerr)
 
 # Load data ---------------------
 
-#the first large dataset
+# Define file paths (update these to match your setup)
+
+# these for CLUSTER path 
+barcode_file_path <- "/users/blehner/asarmiento/project-lehner/psi_calculation/lib17/01_PSI_calculation/lib17_fil_read_w_barcode.tsv"
+psi_file_path <- "/users/blehner/asarmiento/project-lehner/psi_calculation/lib17/01_PSI_calculation/psi_per_barcode_lib17.tsv"
+
+# Read data using fread()
+barcode_data <- fread(barcode_file_path)
+psi_data <- fread(psi_file_path)
 
 
-barcode_data_file <- "~/cluster_mount/lib17/01_PSI_calculation/lib17_fil_read_w_barcode.tsv"
-psi_data_file <- "~/cluster_mount/lib17/01_PSI_calculation/psi_per_barcode_lib17.tsv"
+#these for MOUNT path 
+#not reccomended but useful to work r from tabletop 
 
-#not reccomended but useful to work rfrom tabletop 
+getwd()
+setwd("/home/amaya/cluster_mount/psi_calculation/lib17/01_PSI_calculation")
 
-setwd("/home/amaya/cluster_mount/lib17/01_PSI_calculation")
+##
+barcode_data_file <- "/home/amaya/cluster_mount/psi_calculation/lib17/01_PSI_calculation/lib17_fil_read_w_barcode.tsv"
+psi_data_file <- "/home/amaya/cluster_mount/psi_calculation/lib17/01_PSI_calculation/psi_per_barcode_lib17.tsv"
+
+barcode_data <- fread(barcode_data_file)
+psi_data <- fread(psi_data_file)
 
 
 # Read data directly from the cluster
 barcode_data <- fread(barcode_data_file)
 psi_data <- fread(psi_data_file)
 
+getwd()
+##
 
 
 
-barcode_data_file <- "/users/blehner/asarmiento/project-lehner/psi_calculation/lib17/01_PSI_calculation/lib17_fil_read_w_barcode.tsv"
-barcode_data <- fread(barcode_data_file)
+# Print the first few rows to check
+head(barcode_data)
+head(psi_data)
 
-file.exists("~/cluster_mount/lib17/01_PSI_calculation/lib17_fil_read_w_barcode.tsv")
-
-
-# Load the second dataset
-psi_data_file <- "/users/blehner/asarmiento/project-lehner/psi_calculation/lib17/01_PSI_calculation/psi_per_barcode_lib17.tsv"
-psi_data <- fread(psi_data_file)
-
-# Check dimensions of both files
-dim(barcode_data)  # Check dimensions of barcode data
-dim(psi_data)      # Check dimensions of psi data
-
-# Look at the first few rows of each dataset
-head(barcode_data)  # Look at the first few rows of barcode data
-head(psi_data)      # Look at the first few rows of psi data
-
+# See headers and drop unnecesary columns
 
 
 # Check for any missing values
 summary(barcode_data)
+summary(psi_data)
 
 # Check number of missing values in each column
 colSums(is.na(barcode_data))
@@ -70,27 +67,135 @@ colSums(is.na(psi_data))
 
 
 # Drop columns containing "hela" because they are empty/ irrelevant
-nohela <- psi_data %>% select(-contains("hela"))
+psi_data <- psi_data %>% select(-contains("hela"))
 barcode_data <- barcode_data %>% select(-contains("hela"))
 
-#----------summarise the barcode situation --------------------------------------------
+# Make the basic dfs to start the analysis ------------------------------------
+
+# -make a long version of nohela where the Reps are all in one column for Nskip, Ninc, Nother, psi_canonical, psi_all, etc
+# -make a long version of the barcode read counts that maintains the rest of the info in the df
+# -take logs of the read or variant counts and add those columns to the dfs
 
 
-# Create a single barcodes list for all replicates and the ggvenn diagrams
+# ##optionally subset the data so it can plot a bit faster
+# #
+#  psi_sample <- psi_data %>% sample_frac(0.1)
+# #
+# 
+# # Convert to long format (the 10% subset)
+# psi_long <- psi_sample %>%
+#   pivot_longer(
+#     cols = matches("_(hek_R[123])$"),  # Selects all columns ending in hek_R1, hek_R2, hek_R3
+#     names_to = c("metric", "replicate"),  # New columns
+#     names_pattern = "(.*)_hek_(R[123])",  # Extracts metric (e.g., Nskip) and replicate (e.g., R1)
+#     values_to = "value"
+#   )
+
+# # Alternatively, you can use all the data 
+# # Convert to long format the whole dta 
+# psi_long <- psi_data %>%
+#   pivot_longer(
+#     cols = matches("_(hek_R[123])$"),  # Selects all columns ending in hek_R1, hek_R2, hek_R3
+#     names_to = c("metric", "replicate"),  # New columns
+#     names_pattern = "(.*)_hek_(R[123])",  # Extracts metric (e.g., Nskip) and replicate (e.g., R1)
+#     values_to = "value"
+#   )
+
+## separate the variant id name into columns 
+
+psi_long <- psi_long %>%
+  separate(variant_id, into = c("gene", "region", "mutation"), sep = "_", fill = "right")
+psi_data <- psi_data %>%
+  separate(variant_id, into = c("gene", "region", "mutation"), sep = "_", fill = "right")
+
+# Re form the column again 
+
+# Rejoin the columns into a new 'variant_id' column
+psi_long <- psi_long %>%
+  mutate(variant_id_new = paste(gene, region, mutation, sep = "_"))
+
+# For psi_data
+psi_data <- psi_data %>%
+  mutate(variant_id_new = paste(gene, region, mutation, sep = "_"))
+
+# View transformed data
+head(psi_long)
+head(psi_data)
+head(barcode_data)
+# 
+# # Alternative to use 10% of barcodes for quicker reactions from R
+# 
+# barcode_sample <- barcode_data %>% sample_frac(0.1)
+# 
+# 
+# # Pivot longer to make replicate values long format
+# barcode_long <- barcode_sample %>%
+#   pivot_longer(cols = starts_with("hek_"),  # Selects hek_R1, hek_R2, hek_R3
+#                names_to = "replicate",       # New column for replicate names
+#                values_to = "count")          # New column for values
+# 
+# # # Pivot longer to make replicate values long format
+# # barcode_long <- barcode_data %>%
+# #   pivot_longer(cols = starts_with("hek_"),  # Selects hek_R1, hek_R2, hek_R3
+# #                names_to = "replicate",       # New column for replicate names
+# #                values_to = "count")          # New column for values
+
+# Separate the 'id' column into 'gene', 'region', and 'mutation'
+barcode_long <- barcode_long %>%
+  separate(id, into = c("gene", "region", "mutation"), sep = "_", fill = "right")
+
+# View the transformed data
+colnames(barcode_long)
+colnames(psi_sample)
+colnames(psi_long)
+colnames(barcode_long)
+# Log transform read/variant counts
+barcode_long <- barcode_long %>% 
+  mutate(log_count = log1p(count))
+
+psi_long <- psi_long %>% 
+  mutate(log_value = log1p(value))
+# 
+# psi_sample <- psi_sample %>%
+#   mutate(log_value = log1p(value))
+
+# View transformed data
+colnames(barcode_long)
+colnames(psi_sample)
+colnames(psi_long)
+colnames(barcode_long)
+head(psi_long)
+head(psi_data)
+head(barcode_data)
+
+# #removing the large datasets if trying to save up space
+# rm(barcode_data)
+# rm(psi_data)
+# #and to keep everything working, rename the samples
+# barcode_data <- barcode_sample
+# psi_data <- psi_sample
+
+
+# # Plot the interreplicate analysis ---------this works poorly if using subsets------------------------
+# - venn diagram of barcode overlap
+# - Eulerr diagram of overlap
+# - boxplot of barcode counts
+# - Density plot of the barcode count
+# - make the six simple scattterplots correlating the replicates and join them; also use ggpairs to make a figure
+
+# Ensure correct filtering based on `replicate` column in `barcode_long`
 barcodes_list <- list(
-  R1 = barcode_data %>% filter(hek_R1 > 0) %>% pull(barcode),
-  R2 = barcode_data %>% filter(hek_R2 > 0) %>% pull(barcode),
-  R3 = barcode_data %>% filter(hek_R3 > 0) %>% pull(barcode)
+  R1 = barcode_long %>% filter(replicate == "hek_R1" & count > 0) %>% pull(barcode),
+  R2 = barcode_long %>% filter(replicate == "hek_R2" & count > 0) %>% pull(barcode),
+  R3 = barcode_long %>% filter(replicate == "hek_R3" & count > 0) %>% pull(barcode)
 )
 
-
-# Create the first Venn diagram using ggvenn
+# Plot Venn diagram using ggvenn
 ggvenn(barcodes_list, 
        fill_color = c("red", "blue", "green"),
        fill_alpha = 0.5,
        stroke_size = 0.5,
        set_name_size = 5)
-
 
 # Compute barcode overlaps
 total_barcodes <- length(unique(unlist(barcodes_list)))
@@ -113,27 +218,17 @@ overlap_summary <- data.frame(
 print(overlap_summary)
 
 
-
-## Another other styles of venn diagram - EULER
-
-# Create a named list of barcode sets
-barcode_sets <- list(
-  R1 = nohela %>% filter(read_canonical_hek_R1 > 0) %>% pull(barcode),
-  R2 = nohela %>% filter(read_canonical_hek_R2 > 0) %>% pull(barcode),
-  R3 = nohela %>% filter(read_canonical_hek_R3 > 0) %>% pull(barcode)
+# Remove duplicates within each replicate
+barcodes_list <- list(
+  R1 = unique(barcode_long %>% filter(replicate == "hek_R1" & count > 0) %>% pull(barcode)),
+  R2 = unique(barcode_long %>% filter(replicate == "hek_R2" & count > 0) %>% pull(barcode)),
+  R3 = unique(barcode_long %>% filter(replicate == "hek_R3" & count > 0) %>% pull(barcode))
 )
 
-# Generate the Venn Diagram with proportional areas
-ggVennDiagram(barcode_sets, label = "count") +
-  scale_fill_gradient(low = "white", high = "blue") +  # Color gradient
-  theme_minimal()
+# Now create Euler diagram
+euler_fit <- euler(barcodes_list)
 
-
-
-# Create an Euler diagram with proportional sizes
-euler_fit <- euler(barcode_sets)
-
-# Plot
+# Plot Euler diagram
 plot(euler_fit, 
      fills = c("red", "blue", "green"), 
      alpha = 0.5, 
@@ -141,202 +236,262 @@ plot(euler_fit,
      labels = c("R1", "R2", "R3"))
 
 
-# Clean up unneeded objects
-rm(barcodes_list)
-rm(euler_fit)
-rm(barcode_sets)
-rm(overlap_summary)
-gc()
-
-
-
-##  -------------------------------------------
-
-## explore barcode lenth distribution # Calculate the length of each nucleotide sequence
-barcode_data$nt_seq_length <- nchar(barcode_data$nt_seq)
-
-#a bit like a gel band 
-
-# Plot the distribution of sequence lengths
-ggplot(barcode_data, aes(x = nt_seq_length)) +
-  geom_histogram(binwidth = 10, fill = "steelblue", color = "black", alpha = 0.7) +
-  labs(title = "Distribution of Nucleotide Sequence Lengths", x = "Sequence Length", y = "Frequency") +
-  theme_minimal()
-
-# Check number of unique barcodes
-length(unique(barcode_data$barcode))
-length(unique(nohela$barcode))
-
-# Count the number of barcodes per variant
-barcode_count_per_variant <- barcode_data %>%
-  group_by(id) %>%
-  summarise(barcode_count = n_distinct(barcode))
-
-
-###take gene names apart ----------
-
-#extract from id column 
-read_count_per_variant <- nohela %>%
-  mutate(
-    parts = str_split(variant_id, "_"),  # Split the id by underscores
-    gene_name = sapply(parts, function(x) x[1]),  # First element is gene name
-    intron = sapply(parts, function(x) x[2]),  # Second element is intron
-    mutation = sapply(parts, function(x) paste(x[3:length(x)], collapse = "_"))  # Remaining parts are mutation
-  )
-
-colnames(read_count_per_variant)
-
-#add up all the reads from all replicates
-read_count_per_variant <- read_count_per_variant %>%
-  mutate(total_read_count = read_all_hek_R1 + read_all_hek_R2 + read_all_hek_R3)
-
-
-
-# Convert to long format so that replicate info is present
-read_count_long <- read_count_per_variant %>%
-  pivot_longer(
-    cols = c(read_all_hek_R1, read_all_hek_R2, read_all_hek_R3),
-    names_to = "replicate",
-    values_to = "read_count"
-  ) %>%
-  mutate(
-    replicate = case_when(
-      replicate == "read_all_hek_R1" ~ "R1",
-      replicate == "read_all_hek_R2" ~ "R2",
-      replicate == "read_all_hek_R3" ~ "R3"
-    )
-  )
-
-
-
-##---------lets see a boxplot ------------------------
-
-
-# Create the boxplot
-ggplot(read_count_long, aes(x = replicate, y = read_count)) +
+# Create the boxplot of simple counts 
+ggplot(barcode_long, aes(x = replicate, y = count)) +
   geom_boxplot() +
-  labs(title = "Read Count Distribution by Replicate",
+  labs(title = "Barcode Count Distribution by Replicate ",
        x = "Replicate",
        y = "Read Count") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels if needed
 
 
-# Create the scatter plot
-ggplot(read_count_long, aes(x = gene_name, y = read_count, color = replicate)) +
-  geom_point(size = 3, alpha = 0.6) +  
-  labs(title = "Reads per Variant by Replicate", x = "Gene", y = "Number of Reads") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+
+# Create barcode log10 of counts boxplot
+ggplot(barcode_long, aes(x = replicate, y = log_count, fill = replicate)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Barcode Count Distribution per Replicate (log count)", x = "Replicate", y = "Log(Barcode Count)") +
+  theme_minimal()
 
 
-##  
 ## Density plot of reads per replicate to see if they are similar 
-
-ggplot(read_count_long, aes(x = read_count, color = replicate)) +
+ggplot(barcode_long, aes(x = count, color = replicate)) +
   geom_density() +
   labs(title = "Density Plot of Read Counts by Replicate", x = "Read Count", y = "Density") +
   scale_x_log10() +  # Log-scale for better visualization
   theme_minimal()
 
 
-# statistical testing to see diff across replicates
-
-
-kruskal_test_result <- kruskal.test(read_count ~ replicate, data = read_count_long)
-print(kruskal_test_result)
-
-
-#considering median scaling 
-read_count_long <- read_count_long %>%
-  group_by(replicate) %>%
-  mutate(scaled_read_count = read_count / median(read_count))
+head(barcode_data)
+head(barcode_long)
 
 
 
+# Calculate the length of each nucleotide sequence
+barcode_long$nt_seq_length <- nchar(barcode_long$nt_seq)
 
+# Plot distribution of sequence lengths
+ggplot(barcode_long, aes(x = nt_seq_length)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Nucleotide Sequence Lengths", x = "Sequence Length", y = "Frequency") +
+  theme_minimal()
 
-########################################################
+# Clean up unneeded objects
+rm(barcodes_list, euler_fit, overlap_summary)
+gc()
 
-
-# View the top variants with the most barcodes
-head(barcode_count_per_variant, 100)
-
-#extract from id column 
-barcode_count_per_variant <- barcode_count_per_variant %>%
-  mutate(
-    parts = str_split(id, "_"),  # Split the id by underscores
-    gene_name = sapply(parts, function(x) x[1]),  # First element is gene name
-    intron = sapply(parts, function(x) x[2]),  # Second element is intron
-    mutation = sapply(parts, function(x) paste(x[3:length(x)], collapse = "_"))  # Remaining parts are mutation
+## make some barcode groupby 
+barcode_groupby <- barcode_long %>%
+  group_by(barcode, gene, region, mutation, exon) %>%  # Keep relevant columns
+  summarise(
+    total_count = sum(count),
+    avg_log_count = mean(log_count),  # Example: keep log count info
+    .groups = "drop"
   )
 
+# Check the first few rows of the summarized data
+head(barcode_long)
+head(barcode_groupby)
 
-# Boxplot showing barcode counts by gene name - with many outliers 
-# trying to see if there are overrepresented genes 
-ggplot(barcode_count_per_variant, aes(x = gene_name, y = barcode_count)) +
-  geom_boxplot() +
-  labs(title = "Barcode Counts by Gene Name", x = "Gene Name", y = "Barcode Count" ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate labels for better readability
+# Plot the distribution of total and logged read counts per barcode
 
-
-
-
-# Boxplot showing barcode counts by gene name under 1000 read counts 
-
-barcode_count_per_variant %>% 
-  filter(barcode_count < 1000) %>%
-  ggplot(aes(x = gene_name, y = barcode_count)) +
-  geom_boxplot() +
-  labs(title = "Barcode Counts by Gene Name", x = "Gene Name", y = "Barcode Count" ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate labels for better readability
-
-read_count_long %>% 
-  ggplot(aes(x = gene_name, y = total_read_count)) +
-  geom_boxplot() +
-  labs(title = "total read Counts by Gene Name", x = "Gene Name", y = "total Count" ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate labels for better readability
-
-
-
-
-
-# make a correlation plot of the variants 
-
-# Correlation between replicate counts
-cor(barcode_data[, c("hek_R1", "hek_R2", "hek_R3", "hela_R1")], use = "complete.obs")
-
-# Plot a heatmap of the correlations
-library(ggcorrplot)
-cor_matrix <- cor(barcode_data[, c("hek_R1", "hek_R2", "hek_R3", "hela_R1")], use = "complete.obs")
-ggcorrplot(cor_matrix, method = "circle", type = "lower", lab = TRUE)
-
-
-# Scatterplot comparing R1 vs R2
-ggplot(barcode_data, aes(x = hek_R1, y = hek_R2)) +
-  geom_point(alpha = 0.6) +
-  labs(title = "Scatter Plot of Counts between R1 and R2", x = "hek_R1 Count", y = "hek_R2 Count") +
+# Density plot of total read counts per barcode with truncated x-axis
+ggplot(barcode_groupby, aes(x = total_count)) +
+  geom_density(fill = "steelblue", alpha = 0.7) +
+  labs(title = "Density Plot of Read Counts per Barcode", x = "Total Read Count per Barcode", y = "Density") +
+  scale_x_continuous(limits = c(0, 1000)) +  # Truncate the x-axis to focus on the range 0-1000
   theme_minimal()
 
-# Scatterplot comparing R1 vs R3
-ggplot(barcode_data, aes(x = hek_R1, y = hek_R3)) +
-  geom_point(alpha = 0.6) +
-  labs(title = "Scatter Plot of Counts between R1 and R3", x = "hek_R1 Count", y = "hek_R3 Count") +
+
+ggplot(barcode_groupby, aes(x = total_count)) +
+  geom_histogram(binwidth = .1, fill = "steelblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Read Counts per Barcode", x = "Log10 scale Read Count per Barcode", y = "Frequency") +
+  scale_x_log10() + 
   theme_minimal()
 
-# Scatterplot comparing R1 vs R3
-ggplot(barcode_data, aes(x = hek_R2, y = hek_R3)) +
-  geom_point(alpha = 0.6) +
-  labs(title = "Scatter Plot of Counts between R2 and R3", x = "hek_R2 Count", y = "hek_R3 Count") +
+ggplot(barcode_groupby, aes(x = total_count)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Read Counts per Barcode", x = "Log2 scale Read Count per Barcode", y = "Frequency") +
+  scale_x_continuous(trans = "log2") + 
   theme_minimal()
 
-##### add the corr plots for PSI per barcode; then collapse and do per variant 
-## use ggpairs form ggally to have joined plots and R ²
-colnames(read_count_per_variant)
+# Density plot of total read counts per barcode
+ggplot(barcode_groupby, aes(x = total_count)) +
+  geom_density(fill = "steelblue", alpha = 0.7) +
+  labs(title = "Density Plot of Read Counts per Barcode", x = "Log2 Read Count per Barcode", y = "Density") +
+  scale_x_continuous(trans = "log2") +
+  theme_minimal()
 
-########################### see the n in nskip # Reshape the data to long format for easier plotting
-ninc_long <- read_count_long %>%
-  mutate(intron = str_replace(intron, "i", "")) %>%  # Remove "i" from intron number 
+
+
+# Look at the data ------------------------------------------------------------------
+#now i would like to generate a series of scatterplots comparing the replicates
+
+head(psi_long)
+head(barcode_long)
+head(barcode_data)
+ 
+
+
+
+### Create individual plots for BARCODES ----
+plot1 <- ggplot(barcode_data, aes(x = hek_R1, y = hek_R3)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Barcode Counts: R1 vs R3", x = "R1 Count", y = "R3 Count") +
+  theme_minimal()
+
+plot2 <- ggplot(barcode_data, aes(x = hek_R2, y = hek_R3)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Barcode Counts: R2 vs R3", x = "R2 Count", y = "R3 Count") +
+  theme_minimal()
+
+plot3 <- ggplot(barcode_data, aes(x = hek_R1, y = hek_R2)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Barcode Counts: R1 vs R2", x = "R1 Count", y = "R2 Count") +
+  theme_minimal()
+
+
+# Combine the plots vertically using cowplot
+barcode_corr_cowplot <- plot_grid(plot1, plot2, plot3, ncol = 1, align = "v")
+
+# Display the combined plot
+print(barcode_corr_cowplot)
+
+### Create individual plots for Nskip ----
+plot4 <- ggplot(psi_data, aes(x = Nskip_hek_R1, y = Nskip_hek_R3)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Nskip Counts: R1 vs R3", x = "R1 Count", y = "R3 Count") +
+  theme_minimal()
+
+plot5 <- ggplot(psi_data, aes(x = Nskip_hek_R2, y = Nskip_hek_R3)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Nskip_ Counts: R2 vs R3", x = "R2 Count", y = "R3 Count") +
+  theme_minimal()
+
+plot6 <- ggplot(psi_data, aes(x = Nskip_hek_R1, y = Nskip_hek_R2)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Nskip_ Counts: R1 vs R2", x = "R1 Count", y = "R2 Count") +
+  theme_minimal()
+
+
+# Combine the plots vertically using cowplot
+Nskip_corr_cowplot <- plot_grid(plot4, plot5, plot6, ncol = 1, align = "v")
+
+# Display the combined plot
+print(Nskip_corr_cowplot)
+
+
+### Create individual plots for Ninc ----
+plot7 <- ggplot(psi_data, aes(x = Ninc_hek_R1, y = Ninc_hek_R3)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Ninc_ Counts: R1 vs R3", x = "R1 Count", y = "R3 Count") +
+  theme_minimal()
+
+plot8 <- ggplot(psi_data, aes(x = Ninc_hek_R2, y = Ninc_hek_R3)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Ninc_ Counts: R2 vs R3", x = "R2 Count", y = "R3 Count") +
+  theme_minimal()
+
+plot9 <- ggplot(psi_data, aes(x = Ninc_hek_R1, y = Ninc_hek_R2)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Ninc Counts: R1 vs R2", x = "R1 Count", y = "R2 Count") +
+  theme_minimal()
+
+
+
+# Combine the plots vertically using cowplot
+Ninc_corr_cowplot <- plot_grid(plot7, plot8, plot9, ncol = 1, align = "v")
+
+# Display the combined plot
+print(Ninc_corr_cowplot)
+
+
+### Create individual plots for Nother ----
+plot10 <- ggplot(psi_data, aes(x = Nother_hek_R1, y = Nother_hek_R3)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Nother_ Counts: R1 vs R3", x = "R1 Count", y = "R3 Count") +
+  theme_minimal()
+
+plot11 <- ggplot(psi_data, aes(x = Nother_hek_R2, y = Nother_hek_R3)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Nother_ Counts: R2 vs R3", x = "R2 Count", y = "R3 Count") +
+  theme_minimal()
+
+plot12 <- ggplot(psi_data, aes(x = Nother_hek_R1, y = Nother_hek_R2)) +
+  geom_point(alpha = 0.5, color = "red") +
+  labs(title = "Scatter plot of Nother_ Counts: R1 vs R2", x = "R1 Count", y = "R2 Count") +
+  theme_minimal()
+
+
+
+# Combine the plots vertically using cowplot
+Nother_corr_cowplot <- plot_grid(plot10, plot11, plot12, ncol = 1, align = "v")
+
+# Display the combined plot
+print(Nother_corr_cowplot)
+
+### Could you figure out how to includ e the regression lines ? and equations
+
+## using GGpairs to make a matrix 
+ggpairs(barcode_data, 
+        columns = c("hek_R1", "hek_R2", "hek_R3"),  # Specify numeric columns to plot
+        lower = list(continuous = wrap("points", alpha = 0.5, color = "red")),  # Scatter plots in lower triangle
+        diag = list(continuous = wrap("densityDiag", fill = "blue", alpha = 0.3)), # Density plot on diagonal
+        upper = list(continuous = wrap("cor", size = 5))  # Correlation values in upper triangle
+)
+#psi per barcode
+  # Select relevant columns (barcode, PSI values for replicates)
+  psi_per_barcode <- psi_data %>%
+  select(barcode, psi_all_hek_R1, psi_all_hek_R2, psi_all_hek_R3) %>%
+  distinct()  # Ensure unique barcodes
+
+# Generate the correlation scatterplots using GGally::ggpairs
+psi_barcode_plot <- ggpairs(psi_per_barcode, 
+                            columns = 2:4,   # Select the PSI columns
+                            title = "PSI per Barcode Across Replicates",
+                            upper = list(continuous = wrap("cor", method = "pearson")),  # Show correlation coefficient
+                            lower = list(continuous = wrap("smooth", alpha = 0.2, color = "red")))  # Add smoothing line
+print(psi_barcode_plot)
+
+
+#psi per variant
+# Select relevant columns (barcode, PSI values for replicates)
+psi_per_variant <- psi_data %>%
+  select(variant_id, psi_all_hek_R1, psi_all_hek_R2, psi_all_hek_R3) %>%
+  distinct()  # Ensure unique barcodes
+
+# Generate the correlation scatterplots using GGally::ggpairs
+psi_variant_plot <- ggpairs(psi_per_variant, 
+                    columns = 2:4,   # Select the PSI columns
+                    title = "PSI per variant Across Replicates",
+                    upper = list(continuous = wrap("cor", method = "pearson")),  # Show correlation coefficient
+                    lower = list(continuous = wrap("smooth", alpha = 0.2, color = "red")))  # Add smoothing
+print(psi_variant_plot)
+
+# -make summaries of all the descriptive stats for each column in the long dfs printout
+#plot ninc 
+
+# , and then make a few descriptive plots like boxplots by gene
+# -plot the barcodes and variant counts per gene
+# then plot them log transformed boxplot
+# - make the ninc plot; then make it plot the log of the ninc
+
+
+
+## Counts of N skip ------
+# Filter for the relevant conditions (Ninc, Nskip, Nother) and plot
+psi_long %>%
+  filter(is.finite(log_value), metric %in% c("Ninc", "Nskip", "Nother")) %>% 
+  ggplot(aes(x = log_value, fill = metric)) +  # Use 'metric' as the fill
+  geom_histogram(position = "dodge", bins = 50, alpha = 1) +
+  scale_fill_manual(values = c("Ninc" = "green", "Nskip" = "red", "Nother" = "gray")) +  # Correct condition names
+  labs(title = "Distribution of Ninc vs Nskip vs Nother",
+       x = "Log10 Count", y = "Frequency", fill = "Condition") +
+  theme_minimal()
+
+## see the n in nskip # Reshape the data to long format for easier plotting
+ninc_long <- psi_data %>%
+  mutate(region = str_replace(region, "i", "")) %>%  # Remove "i" from intron number 
   pivot_longer(cols = starts_with("Nskip") | starts_with("Ninc") | starts_with("Nother"),
                names_to = "condition", values_to = "count") %>%
   mutate(replicate = str_extract(condition, "R[123]"),  # Extract replicate number
@@ -347,7 +502,7 @@ ninc_long <- read_count_long %>%
          ))
 
 # Plot
-p <- ggplot(ninc_long, aes(x = gene_name, y = count, fill = condition)) +
+p <- ggplot(ninc_long, aes(x = gene, y = count, fill = condition)) +
   geom_bar(stat = "identity", position = "dodge") +
   facet_wrap(~replicate) +  # Separate plots by replicate
   scale_fill_manual(values = c("Ninc" = "green", "Nskip" = "red", "Other" = "gray")) +
@@ -362,7 +517,7 @@ print(p)
 
 
 # a log-scaled one for easier viz
-p_log <- ggplot(ninc_long, aes(x = gene_name, y = log10(count + 1), fill = condition)) +
+p_log <- ggplot(ninc_long, aes(x = gene, y = log10(count + 1), fill = condition)) +
   geom_bar(stat = "identity", position = "dodge") +
   facet_wrap(~replicate) +  
   scale_fill_manual(values = c("Ninc" = "green", "Nskip" = "red", "Other" = "gray")) +
@@ -377,105 +532,37 @@ print(p_log)
 
 
 
-#######
-
-
-
-
-############################           ######
-
-# Count the number of unique variants
-length(unique(barcode_data$id))
-
-# Frequency of variants in the data
-variant_frequency <- barcode_data %>%
-  group_by(id) %>%
-  summarise(variant_count = n())
-
-# View the most common variants
-head(variant_frequency, 10)
-
-
-# Example of reshaping the data
-barcode_data_long <- barcode_count_per_variant %>%
-  select(gene_name, hek_R1, hek_R2, hek_R3) %>%
-  pivot_longer(cols = starts_with("hek_R"), 
-               names_to = "replicate", 
-               values_to = "barcode_count")
-
-# Create the scatterplot
-ggplot(barcode_data_long, aes(x = gene_name, y = barcode_count, color = replicate)) +
-  geom_point(alpha = 0.7) +  # Scatter plot with transparency for better visibility
-  scale_color_manual(values = c("R1" = "red", "R2" = "blue", "R3" = "green")) +  # Custom colors
-  labs(title = "Barcode Counts by Gene and Replicate", x = "Gene Name", y = "Barcode Count") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Rotate x-axis labels for readability
-  theme_minimal()
-
-
-
-## attempt normalization lol 
-
-
-
-
-barcode_count_per_variant <- barcode_count_per_variant %>%
-  mutate(barcode_count_z = (barcode_count - mean(barcode_count)) / sd(barcode_count))
-
-
-## how to fix this overplotting? 
-#try this 
-# Select only read count columns
-pca_data <- read_count_per_variant %>%
-  select(read_all_hek_R1, read_all_hek_R2, read_all_hek_R3) %>%
-  drop_na()  # Remove any rows with missing values
-
-# Standardize the data
-pca_scaled <- scale(pca_data)
-
-
-
-
-# Load necessary libraries
-library(ggplot2)
-library(GGally)
+# - make a violin plot of the psi distribution for each gene
+# -make a histogram of the barcode number per variant and another of the read number per variant
+# - Use those numbers vs the oligo pool order file to see how many of the variants have been covered /which proportion are missing from experiment, and plot by gene the missingness(base) [asarmiento@login1 scripts]$ 
+#   
+#----------
+head(psi_per_variant)
 library(dplyr)
+library(tidyr)
+library(ggplot2)
 
-# Load your dataset (if not already loaded)
-# Assuming `read_count_long` is already in the environment
+# 1. Extract the gene name from the 'variant_id'
+psi_per_variant <- psi_per_variant %>%
+  separate(variant_id, into = c("gene_name", "region", "mutation"), sep = "_", fill = "right")
 
-# --- 1. PSI per Barcode ---
-# Select relevant columns (barcode, PSI values for replicates)
-psi_per_barcode <- read_count_long %>%
-  select(barcode, psi_all_hek_R1, psi_all_hek_R2, psi_all_hek_R3) %>%
-  distinct()  # Ensure unique barcodes
+# 2. Reshape the data from wide to long format
+psi_long <- psi_per_variant %>%
+  gather(key = "replicate", value = "psi_value", psi_all_hek_R1:psi_all_hek_R3)
 
-# Generate the correlation scatterplots using GGally::ggpairs
-psi_barcode_plot <- ggpairs(psi_per_barcode, 
-                            columns = 2:4,   # Select the PSI columns
-                            title = "PSI per Barcode Across Replicates",
-                            upper = list(continuous = wrap("cor", method = "pearson")),  # Show correlation coefficient
-                            lower = list(continuous = "smooth"))  # Add smoothing line
+# 3. Create the plot
+psi_long %>% 
+  na.omit(T) %>% 
+  ggplot(aes(x = gene_name, y = psi_value, color = replicate)) +
+  geom_point(alpha =.2, size =0.2) +  # You can use geom_point() or geom_boxplot() depending on how you want to visualize the distribution
+  labs(title = "PSI Values by Gene Name and Replicate",
+       x = "Gene Name",
+       y = "PSI Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))  # Rotate x axis labels for readability
 
-# Print the plot
-print(psi_barcode_plot)
-
-# --- 2. Collapse PSI per Barcode to Variant Level ---
-psi_per_variant <- read_count_long %>%
-  group_by(variant_id) %>%
-  summarise(
-    psi_all_hek_R1 = mean(psi_all_hek_R1, na.rm = TRUE),
-    psi_all_hek_R2 = mean(psi_all_hek_R2, na.rm = TRUE),
-    psi_all_hek_R3 = mean(psi_all_hek_R3, na.rm = TRUE)
-  )
-
-# Generate the correlation scatterplots for PSI per Variant
-psi_variant_plot <- ggpairs(psi_per_variant, 
-                            columns = 2:4,   # Select the PSI columns
-                            title = "PSI per Variant Across Replicates",
-                            upper = list(continuous = wrap("cor", method = "pearson")),  # Show correlation coefficient
-                            lower = list(continuous = "smooth"))  # Add smoothing line
-
-# Print the plot
-print(psi_variant_plot)
-
-
+#- on the psi_long data i would like to make two plots covering the 
+#on the psi_long data i would like to make three plots covering the three cross
+#replicate comparisons (r1vsr2; R1vsR3; r2 vs R3) for each of the nskip, ninc, psi, etc
+#which are stored in the metric col
+#- could you please group them in threes by cowplot or use ggpairs to generate those sets? thansk! 
