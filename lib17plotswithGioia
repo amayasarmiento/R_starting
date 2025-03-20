@@ -1,0 +1,293 @@
+# Load libraries---------------------------------------
+
+library(tidyverse)    # Loads ggplot2, dplyr, readr, stringr, etc.
+library(here)         # For managing file paths
+library(GGally)       # If you need pair plots + correlations
+library(cowplot)      # For combining multiple ggplots
+library(ggvenn)       # If you prefer ggplot-style Venn diagrams
+library(data.table)   # If you need extremely fast data handling
+library(ggVennDiagram)
+
+
+# Load data ---------------------
+
+# Define file paths (update these to match your setup)
+
+# these for CLUSTER path 
+barcode_file_path <- "/users/blehner/asarmiento/project-lehner/psi_calculation/lib17/01_PSI_calculation/lib17_fil_read_w_barcode.tsv"
+psi_file_path <- "/users/blehner/asarmiento/project-lehner/psi_calculation/lib17/01_PSI_calculation/psi_per_barcode_lib17.tsv"
+
+# Read data using fread()
+barcode_data <- fread(barcode_file_path)
+psi_data <- fread(psi_file_path)
+
+
+#these for MOUNT path 
+#not reccomended but useful to work r from tabletop 
+
+getwd()
+setwd("/home/amaya/cluster_mount/psi_calculation/lib17/01_PSI_calculation")
+
+##
+barcode_data_file <- "/home/amaya/cluster_mount/psi_calculation/lib17/01_PSI_calculation/lib17_fil_read_w_barcode.tsv"
+psi_data_file <- "/home/amaya/cluster_mount/psi_calculation/lib17/01_PSI_calculation/psi_per_barcode_lib17.tsv"
+
+barcode_data <- fread(barcode_data_file)
+psi_data <- fread(psi_data_file)
+
+
+# Define file paths (update these to match your setup)
+
+#these for MOUNT path 
+#not reccomended but useful to work r from tabletop 
+
+getwd()
+setwd("/home/amaya/cluster_mount/psi_calculation/lib17/01_PSI_calculation")
+
+##
+
+psi_data_file <- "/home/amaya/cluster_mount/psi_calculation/lib17/01_PSI_calculation/psi_per_barcode_lib17.tsv"
+
+psi_data <- fread(psi_data_file)
+
+
+getwd()
+##
+
+
+
+head(psi_data)
+colnames(psi_data)
+# See headers and drop unnecesary columns
+
+
+# Drop columns containing "hela" because they are empty/ irrelevant
+psi_data <- psi_data %>% select(-contains("hela"))
+psi_data <- psi_data %>% select(-contains("all"))
+psi_data <- psi_data %>% select(-contains("other"))
+psi_data <- psi_data %>% select(-contains("barcode_id"))
+psi_data <- psi_data %>% select(-contains("exon"))
+
+## using GGpairs to make a matrix ------------------
+read_corr <- ggpairs(psi_data, 
+        columns = c( "read_canonical_hek_R1", "read_canonical_hek_R2", "read_canonical_hek_R3"),
+        columnLabels = c("R1", "R2", "R3"),# Specify numeric columns to plot
+        lower = list(continuous = wrap("points", alpha = 0.5, size= 0.1, color = "red")),  # Scatter plots in lower triangle
+        diag = list(continuous = wrap("densityDiag", fill = "blue", alpha = 0.3)), # Density plot on diagonal
+        upper = list(continuous = wrap("cor", size = 5))  # Correlation values in upper triangle
+)+
+  labs(title="Read Correlations between Replicates")
+
+psi_corr_bc <- ggpairs(psi_data, 
+                     columns = c("psi_canonical_hek_R1",  "psi_canonical_hek_R2",  "psi_canonical_hek_R3" ),
+                     columnLabels = c("R1", "R2", "R3"),# Specify numeric columns to plot
+                     lower = list(continuous = wrap("points", alpha = 0.2, size= 0.1, color = "red")),  # Scatter plots in lower triangle
+                     diag = list(continuous = wrap("densityDiag", fill = "blue", alpha = 0.3)), # Density plot on diagonal
+                     upper = list(continuous = wrap("cor", size = 5))  # Correlation values in upper triangle
+)+
+  labs(title="PSI between Replicates per barcode")
+
+ggsave(plot= read_corr, "/home/amaya/cluster_mount/psi_calculation/lib17_read_corr.png", height = 4, width = 4)
+ggsave(plot= psi_corr_bc, "/home/amaya/cluster_mount/psi_calculation/lib17_psi_corr_bc.png", height = 4, width = 4)
+getwd()
+
+## Overlap of barcodes among replicates 
+barcode_long <- psi_data %>%
+  pivot_longer(cols = starts_with("read_canonical_"),  # Selects hek_R1, hek_R2, hek_R3
+               names_to = "replicate",       # New column for replicate names
+               values_to = "count")          # New column for values
+
+# Ensure correct filtering based on `replicate` column in `barcode_long`
+barcodes_list <- list(
+  R1 = barcode_long %>% filter(replicate == "read_canonical_hek_R1" & count > 0) %>% pull(barcode),
+  R2 = barcode_long %>% filter(replicate == "read_canonical_hek_R2" & count > 0) %>% pull(barcode),
+  R3 = barcode_long %>% filter(replicate == "read_canonical_hek_R3" & count > 0) %>% pull(barcode)
+)
+
+# Plot Venn diagram using ggvenn
+venn_bc <- ggvenn(barcodes_list, 
+       fill_color = c("red", "blue", "green"),
+       fill_alpha = 0.5,
+       stroke_size = 0.5,
+       set_name_size = 5)
+
+ggsave(plot= venn_bc, "/home/amaya/cluster_mount/psi_calculation/lib17_venn_bc.png", height = 4, width = 4)
+
+## Collapse by variant id 
+psi_per_variant<- psi_data %>% 
+  group_by(variant_id) %>% 
+  summarise(psi_can_R1=mean(psi_canonical_hek_R1, na.rm=T),
+            psi_can_R2=mean(psi_canonical_hek_R2, na.rm=T),
+            psi_can_R3=mean(psi_canonical_hek_R3, na.rm=T), 
+            read_can_R1=sum(read_canonical_hek_R1, na.rm=T),
+            read_can_R2=sum(read_canonical_hek_R2, na.rm=T),
+            read_can_R3=sum(read_canonical_hek_R3, na.rm=T), 
+            bc_per_variant= n())
+
+
+## corr plot of psi per replicate 
+
+
+psi_corr_pervar <- ggpairs(psi_per_variant, 
+                       columns = c("psi_can_R1",  "psi_can_R2",  "psi_can_R3" ),
+                       columnLabels = c("R1", "R2", "R3"),# Specify numeric columns to plot
+                       lower = list(continuous = wrap("points", alpha = 0.2, size= 0.1, color = "red")),  # Scatter plots in lower triangle
+                       diag = list(continuous = wrap("densityDiag", fill = "blue", alpha = 0.3)), # Density plot on diagonal
+                       upper = list(continuous = wrap("cor", size = 5))  # Correlation values in upper triangle
+)+
+  labs(title="PSI between Replicates per variant")
+
+ggsave(plot= psi_corr_pervar, "/home/amaya/cluster_mount/psi_calculation/lib17psi_corr_pervar.png", height = 4, width = 4)
+
+psi_per_variant <- psi_per_variant %>% 
+  mutate(psi_can_mean = rowMeans(select(., psi_can_R2, psi_can_R3), na.rm = TRUE), 
+        psi_stdv = apply(select(., psi_can_R2, psi_can_R3), 1, sd, na.rm = TRUE))
+
+fwrite(psi_per_variant, "/home/amaya/cluster_mount/psi_calculation/lib17psi_per_variant.tsv", sep="\t")
+
+psi_per_variant<- fread("/home/amaya/cluster_mount/psi_calculation/lib17psi_per_variant.tsv", sep="\t")
+
+
+# Rejoin the columns into a new 'variant_id' column
+psi_per_variant$variant_id_2 <- psi_per_variant$variant_id
+
+psi_per_variant <- psi_per_variant %>%
+  separate(variant_id_2, into = c("gene", "intron", "mutation"), sep = "_", fill = "right")
+
+psi_per_variant$intron=gsub("i", "", psi_per_variant$intron)
+
+
+# 
+all_oligos<- fread("~/Desktop/R/plots_lib17/summary.txt", sep = "\t")
+
+psi_per_variant$id <- paste0(psi_per_variant$gene, "_i", psi_per_variant$intron)
+
+summary_per_id <- psi_per_variant %>% 
+  group_by(id) %>% 
+  summarise(nvar= n())
+
+summary_per_id<- merge(summary_per_id, all_oligos, by="id")
+
+summary_per_id$percentvar <- (summary_per_id$nvar/summary_per_id$Oligo_number)*100
+
+percent_var <- ggplot(summary_per_id, aes(x=id, y=percentvar))+
+  geom_col()
+
+## colouring per min barcode 
+
+########### the heatmaps code file pasted below -----------------------------
+psi_per_variant<- fread("/home/amaya/cluster_mount/psi_calculation/lib17psi_per_variant.tsv", sep="\t")
+
+oligo_map<- fread("~/Desktop/R/plots_lib17/illumina_mapping_all_lib17(2).txt", sep = "\t")
+
+head(oligo_map)
+oligo_map$variant_id <- paste0(oligo_map$gene, "_", oligo_map$identifier)
+
+oligo_map=as.data.table(oligo_map)
+
+setkey(oligo_map, variant_id)
+
+psi_per_variant$nt_seq=oligo_map[.(psi_per_variant$variant_id)]$nt_seq
+
+colnames(psi_per_variant)
+oligo_map=merge(oligo_map, psi_per_variant[, c("psi_can_mean", "psi_stdv", "nt_seq")], by="nt_seq", all.x = T)
+
+# Load the wildtype sequences
+wt_sequences <- fread("/home/amaya/Desktop/R/plots_lib17/summary.txt", sep = "\t")
+
+
+###
+
+# Process each variant
+process_variant <- function(variant) {
+  # Extract starting part (A, T, C, G, or "del")
+  start_part <- str_extract(variant, "^[ATCG]|del")
+  
+  # Extract loci number (first number found)
+  loci <- as.numeric(str_extract(variant, "\\d+"))
+  
+  # Extract last letter (for substitutions)
+  last_letter <- ifelse(str_detect(variant, "^del"), NA, str_extract(variant, "[ATCG]$"))
+  
+  # Calculate deletion length
+  del_length <- ifelse(str_detect(variant, "^del"), 
+                       as.numeric(str_extract(variant, "\\d+$")) - as.numeric(str_extract(variant, "(?<=del)\\d+")) + 1, 
+                       NA)
+  
+  # Create a unified mutation category (last letter for substitutions, del_length for deletions)
+  mutation_category <- ifelse(is.na(del_length), last_letter, as.character(del_length))
+  
+  return(data.frame(StartPart = start_part, Loci = loci, MutationCategory = mutation_category))
+}
+
+# Apply function to the "identifier" column of oligo_map
+oligo_map_processed <- oligo_map %>%
+  rowwise() %>%
+  mutate(data.frame(process_variant(identifier))) %>%
+  ungroup()
+
+# 
+# oligo_map_processed$MutationCategory <- factor(oligo_map_processed$MutationCategory,
+#                                                levels = c("A", "T", "C", "G", "1", "3", "6", "21"))
+
+oligo_map_processed$MutationCategory <- factor(oligo_map_processed$MutationCategory,
+                                               levels = c( "21","6","3","1", "G","C", "T", "A"))
+# View result
+print(head(oligo_map_processed))
+write.table(oligo_map_processed, file = "/home/amaya/Documents/Analysis/oligo_map_processed.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+#####
+# Subset the data for one gene to test the plot (to avoid large data issues)
+small_data <- oligo_map_processed %>%
+  filter(gene == "COL4A3_i45") %>%   # Choose a gene of interest, e.g., "COL4A3"
+  select(gene, MutationCategory, Loci, nt_seq, psi_can_mean, psi_stdv) 
+
+dim(small_data)
+unique(oligo_map_processed$gene)
+
+# Create a simple heatmap for this subset
+ggplot(small_data, aes(x = Loci, y = MutationCategory, fill = psi_can_mean)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  labs(title = "Heatmap for COL4A3 INTRON45",
+       x = "Sequence", 
+       y = "Mutation Category",
+       fill = "PSI Mean") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels for readability
+
+########## 
+small_COL4A3i45 <- small_data
+
+# Define the sequence
+sequence <- "AGCAACACCAAGTGCAAAGAGGAAGGTAAATAAACGTCCTTACTATTGCTGTCAATGAAGAAAGGTAACACATCCGTGAGGCCATCATCTTCTTCTTATGTTTATGTCAACAGGATCCAGATCTAACTTGGGGTGGCT"
+
+# Create a data frame with position and nucleotide
+nt_df <- data.frame(
+  Position = as.character(1:nchar(sequence)),  # Convert to character for discrete axis
+  Nucleotide = unlist(strsplit(sequence, ""))
+)
+
+# Ensure small_COL4A3i45 data is consistent
+small_COL4A3i45$Loci <- as.character(small_COL4A3i45$Loci)  # Convert to character to match factor levels
+
+
+#############
+library(ggplot2)
+library(dplyr)
+
+# Ensure Loci is character for proper matching
+small_COL4A3i45 <- small_COL4A3i45 %>%
+  mutate(Loci = as.character(Loci))
+ggplot(small_COL4A3i45 %>% na.omit(), aes(x = as.factor(Loci), y = MutationCategory, fill = psi_can_mean)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  labs(title = "Heatmap for COL4A3 Intron 45",
+       x = "Position (Base Pair)", 
+       y = "Mutation Category",
+       fill = "PSI Mean") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1),   # Rotate for clarity
+        plot.margin = margin(t = 20, b = 50, r = 20, l = 20)) +
+  scale_x_discrete(limits = nt_df$Position, labels = nt_df$Nucleotide)  # Force exact matching
+
+###########
